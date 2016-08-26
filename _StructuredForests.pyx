@@ -7,7 +7,8 @@ cimport numpy as N
 
 
 ctypedef N.int32_t C_INT32
-ctypedef N.float64_t C_FLOAT64
+#ctypedef N.float64_t C_FLOAT64
+ctypedef N.float32_t C_FLOAT32
 
 
 def build_feature_table(shrink, p_size, n_cell, n_ch):
@@ -37,17 +38,17 @@ def build_feature_table(shrink, p_size, n_cell, n_ch):
            N.asarray(ss_tb, dtype=N.int32)
 
 
-def find_leaves(double[:, :, :] src, double[:, :, :] reg_ch,
-                double[:, :, :] ss_ch,
+def find_leaves(float[:, :, :] src, float[:, :, :] reg_ch,
+                float[:, :, :] ss_ch,
                 int shrink, int p_size, int g_size, int n_cell, int stride,
                 int n_tree_eval,
-                double[:, :] thrs, int[:, :] fids, int[:, :] cids):
+                float[:, :] thrs, int[:, :] fids, int[:, :] cids):
     cdef int n_ftr_ch = reg_ch.shape[2]
     cdef int height = src.shape[0] - p_size, width = src.shape[1] - p_size
     cdef int n_tree = cids.shape[0], n_node_per_tree = cids.shape[1]
     cdef int n_reg_dim = (p_size / shrink) ** 2 * n_ftr_ch
     cdef int i, j, k, x1, x2, y1, y2, z, tree_idx, node_idx, ftr_idx
-    cdef double ftr
+    cdef float ftr
     cdef int[:, :] reg_tb, ss_tb
     cdef N.ndarray[C_INT32, ndim=3] lids_arr
 
@@ -92,21 +93,19 @@ def find_leaves(double[:, :, :] src, double[:, :, :] reg_ch,
 
 
 def build_neigh_table(g_size):
-    tb = N.zeros((g_size, g_size, 4, 2), dtype=N.int32)
-    dir_x = N.asarray([1, 1, -1, -1], dtype=N.int32)
-    dir_y = N.asarray([1, -1, 1, -1], dtype=N.int32)
-
-    for i in xrange(g_size):
-        for j in xrange(g_size):
-            for k in xrange(4):
-                r = min(max(dir_x[k] + i, 0), g_size - 1)
-                c = min(max(dir_y[k] + j, 0), g_size - 1)
-                tb[i, j, k] = [r, c]
-
-    return tb
+    dxy = N.c_[
+        [1, 1, -1, -1], 
+        [1, -1, 1, -1],
+    ].astype('i4')
+    idx = N.mgrid[:g_size, :g_size]
+    idx = idx.transpose(1,2,0).reshape(g_size,g_size,1,2) + dxy
+    idx[idx<0] = 0
+    idx[idx>=g_size] = g_size-1
+    return idx
 
 
-def compose(double[:, :, :] src, int[:, :, :] lids,
+
+def compose(float[:, :, :] src, int[:, :, :] lids,
             int p_size, int g_size, int stride, int sharpen, int n_tree_eval,
             int[:, :] cids, int[:] n_seg, int[:, :, :] segs, int[:] edge_bnds,
             int[:] edge_pts):
@@ -116,16 +115,16 @@ def compose(double[:, :, :] src, int[:, :, :] lids,
     cdef int n_s, max_n_s = N.max(n_seg)
     cdef int i, j, k, m, n, p, begin, end
     cdef int leaf_idx, x1, x2, y1, y2, best_seg
-    cdef double err, min_err
-    cdef N.ndarray[C_FLOAT64, ndim=2] dst_arr
+    cdef float err, min_err
+    cdef N.ndarray[C_FLOAT32, ndim=2] dst_arr
 
     cdef int[:, :] patch = N.zeros((g_size, g_size), dtype=N.int32)
-    cdef double[:] count = N.zeros((max_n_s,), dtype=N.float64),
-    cdef double[:, :] mean = N.zeros((max_n_s, depth), dtype=N.float64)
+    cdef float[:] count = N.zeros((max_n_s,), dtype=N.float32),
+    cdef float[:, :] mean = N.zeros((max_n_s, depth), dtype=N.float32)
     cdef int[:, :, :, :] neigh_tb = build_neigh_table(g_size)
 
-    dst_arr = N.zeros((src.shape[0], src.shape[1]), dtype=N.float64)
-    cdef double[:, :] dst = dst_arr
+    dst_arr = N.zeros((src.shape[0], src.shape[1]), dtype=N.float32)
+    cdef float[:, :] dst = dst_arr
 
     with nogil:
         for i from 0 <= i < height by stride:
@@ -203,12 +202,12 @@ def compose(double[:, :, :] src, int[:, :, :] lids,
     return dst_arr
 
 
-def predict_core(N.ndarray[C_FLOAT64, ndim=3] src,
-                 N.ndarray[C_FLOAT64, ndim=3] reg_ch,
-                 N.ndarray[C_FLOAT64, ndim=3] ss_ch,
+def predict_core(N.ndarray[C_FLOAT32, ndim=3] src,
+                 N.ndarray[C_FLOAT32, ndim=3] reg_ch,
+                 N.ndarray[C_FLOAT32, ndim=3] ss_ch,
                  int shrink, int p_size, int g_size, int n_cell,
                  int stride, int sharpen, int n_tree_eval,
-                 N.ndarray[C_FLOAT64, ndim=2] thrs,
+                 N.ndarray[C_FLOAT32, ndim=2] thrs,
                  N.ndarray[C_INT32, ndim=2] fids,
                  N.ndarray[C_INT32, ndim=2] cids,
                  N.ndarray[C_INT32, ndim=1] n_seg,
@@ -220,13 +219,13 @@ def predict_core(N.ndarray[C_FLOAT64, ndim=3] src,
     cdef int i, j, k, m, begin, end
     cdef int leaf_idx, loc, x1, y1
     cdef N.ndarray[C_INT32, ndim=3] lids
-    cdef N.ndarray[C_FLOAT64, ndim=2] dst
+    cdef N.ndarray[C_FLOAT32, ndim=2] dst
 
     lids = find_leaves(src, reg_ch, ss_ch, shrink, p_size, g_size, n_cell,
                        stride, n_tree_eval, thrs, fids, cids)
 
     if sharpen == 0:
-        dst = N.zeros((src.shape[0], src.shape[1]), dtype=N.float64)
+        dst = N.zeros((src.shape[0], src.shape[1]), dtype=N.float32)
 
         for i in xrange(0, src.shape[0] - p_size, stride):
             for j in xrange(0, src.shape[1] - p_size, stride):
@@ -251,7 +250,7 @@ def predict_core(N.ndarray[C_FLOAT64, ndim=3] src,
     return dst
 
 
-cdef inline float bilinear_interp(double[:, :] img, float x, float y) nogil:
+cdef inline float bilinear_interp(float[:, :] img, float x, float y) nogil:
     """
     Return img[y, x] via bilinear interpolation
     """
@@ -269,13 +268,13 @@ cdef inline float bilinear_interp(double[:, :] img, float x, float y) nogil:
         y = h - 1.001
 
     cdef int x0 = int(x), y0 = int(y), x1 = x0 + 1, y1 = y0 + 1
-    cdef double dx0 = x - x0, dy0 = y - y0, dx1 = 1 - dx0, dy1 = 1 - dy0
+    cdef float dx0 = x - x0, dy0 = y - y0, dx1 = 1 - dx0, dy1 = 1 - dy0
 
     return img[y0, x0] * dx1 * dy1 + img[y0, x1] * dx0 * dy1 + \
            img[y1, x0] * dx1 * dy0 + img[y1, x1] * dx0 * dy0
 
 
-def non_maximum_supr(double[:, :] E0, double[:, :] O, int r, int s, double m):
+def non_maximum_supr(float[:, :] E0, float[:, :] O, int r, int s, float m):
     """
     Non-Maximum Suppression
 
@@ -288,10 +287,10 @@ def non_maximum_supr(double[:, :] E0, double[:, :] O, int r, int s, double m):
     """
 
     cdef int h = E0.shape[0], w = E0.shape[1], x, y, d
-    cdef double e, e0, co, si
-    cdef N.ndarray[C_FLOAT64, ndim=2] E_arr = N.zeros((h, w), dtype=N.float64)
-    cdef double[:, :] E = E_arr
-    cdef double[:, :] C = N.cos(O), S = N.sin(O)
+    cdef float e, e0, co, si
+    cdef N.ndarray[C_FLOAT32, ndim=2] E_arr = N.zeros((h, w), dtype=N.float32)
+    cdef float[:, :] E = E_arr
+    cdef float[:, :] C = N.cos(O), S = N.sin(O)
 
     with nogil:
         # suppress edges where edge is stronger in orthogonal direction
@@ -318,12 +317,12 @@ def non_maximum_supr(double[:, :] E0, double[:, :] O, int r, int s, double m):
 
         for x from 0 <= x < s:
             for y from 0 <= y < h:
-                E[y, x] *= x / <double>s
-                E[y, w - 1 - x] *= x / <double>s
+                E[y, x] *= x / <float>s
+                E[y, w - 1 - x] *= x / <float>s
 
         for x from 0 <= x < w:
             for y from 0 <= y < s:
-                E[y, x] *= y / <double>s
-                E[h - 1 - y, x] *= y / <double>s
+                E[y, x] *= y / <float>s
+                E[h - 1 - y, x] *= y / <float>s
 
     return E_arr

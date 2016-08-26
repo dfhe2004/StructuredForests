@@ -73,7 +73,7 @@ class StructuredForests(BaseStructuredForests):
         self.forest_dir = os.path.join(self.model_dir, "forests")
         self.data_prefix = "data_"
         self.tree_prefix = "tree_"
-        self.forest_name = "test_forest.h5"
+        self.forest_name = "forest.h5"
         self.comp_filt = tables.Filters(complib="zlib", complevel=1)
 
         self.trained = False
@@ -134,6 +134,7 @@ class StructuredForests(BaseStructuredForests):
         dst = predict_core(pad, reg_ch, ss_ch, shrink, p_size, g_size, n_cell,
                            stride, sharpen, n_tree_eval, thrs, fids, cids,
                            n_seg, segs, edge_bnds, edge_pts)
+        
 
         if sharpen == 0:
             alpha = 2.1 * stride ** 2 / g_size ** 2 / n_tree_eval
@@ -388,9 +389,9 @@ class StructuredForests(BaseStructuredForests):
                 E0 = 0
 
                 for k in xrange(n_bnd):
-                    r, c = N.nonzero(E & (~ E0))
+                    r, c = N.nonzero(E & (~ E0))        # there is a shift of g_size/2
                     
-                    edge_pts.append(r*g_size+c)
+                    edge_pts.append(r*g_size+c)         
                     edge_bnds[i, j, k] = len(r)
 
                     E0 = E
@@ -538,8 +539,8 @@ if __name__ == "__main__":
             discretize(lbls, n_class, n_sample=256, rand=rand),
 
         "stride": 2,
-        "sharpen": 2,
         "n_tree_eval": 4,
+        "sharpen": 2,
         "nms": True,
     }
 
@@ -548,11 +549,11 @@ if __name__ == "__main__":
     #bsds500_test(model, "toy", "edges")
 
     model = StructuredForests(options, rand=rand)
-    if 0:   # using toy
+    if 1:   # using toy
         model.train(bsds500_train("toy"))
         bsds500_test(model, "toy", "edges")
     
     
-    if 1:   # using bsr
+    if 0:   # using bsr
         model.train(bsds500_train("h:/workspace/bsr"))
         bsds500_test(model, "h:/workspace/bsr", "edges")

@@ -2,20 +2,19 @@ import numpy as N
 cimport numpy as N
 
 ctypedef N.float32_t FLOAT32
-ctypedef N.float64_t FLOAT64
 
 
-def histogram_core(double[:, :] magnitude, double[:, :] orientation,
+def histogram_core(float[:, :] magnitude, float[:, :] orientation,
                    int downscale, int n_orient, int interp):
     cdef int n_row = magnitude.shape[0], n_col = magnitude.shape[1]
     cdef int n_rbin = (n_row + downscale - 1) / downscale
     cdef int n_cbin = (n_col + downscale - 1) / downscale
     cdef int i, j, r, c, o1, o2
-    cdef double o_range = N.pi / n_orient, o
-    cdef N.ndarray[FLOAT64, ndim=3] hist_arr
+    cdef float o_range = N.pi / n_orient, o
+    cdef N.ndarray[FLOAT32, ndim=3] hist_arr
 
-    hist_arr = N.zeros((n_rbin, n_cbin, n_orient), dtype=N.float64)
-    cdef double[:, :, :] hist = hist_arr
+    hist_arr = N.zeros((n_rbin, n_cbin, n_orient), dtype=N.float32)
+    cdef float[:, :, :] hist = hist_arr
 
     with nogil:
         for i from 0 <= i < n_row:
@@ -35,14 +34,14 @@ def histogram_core(double[:, :] magnitude, double[:, :] orientation,
     return hist_arr / downscale ** 2
 
 
-def pdist_core(double[:, :, :] src):
+def pdist_core(float[:, :, :] src):
     cdef int n_in = src.shape[0], n_pt = src.shape[1], n_dim = src.shape[2]
     cdef int i, j, k, m, n
-    cdef N.ndarray[FLOAT64, ndim=3] dst_arr
+    cdef N.ndarray[FLOAT32, ndim=3] dst_arr
 
     dst_arr = N.zeros((src.shape[0], n_pt * (n_pt - 1) / 2, n_dim),
-                      dtype=N.float64)
-    cdef double[:, :, :] dst = dst_arr
+                      dtype=N.float32)
+    cdef float[:, :, :] dst = dst_arr
 
     with nogil:
         for i from 0 <= i < n_in:
