@@ -5,6 +5,6 @@ def make_ext(modname, pyxfilename):
     return Extension(name=modname,
                      sources=[pyxfilename, "_random_forests.cpp"],
                      language="c++",
-                     libraries=["stdc++"],
+                     libraries=[], #"stdc++"],
                      include_dirs=[numpy.get_include(), "."],
-                     extra_compile_args=["-std=c++11"])
+                     extra_compile_args=["/O2"])

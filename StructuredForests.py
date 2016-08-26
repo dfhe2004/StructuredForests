@@ -73,7 +73,7 @@ class StructuredForests(BaseStructuredForests):
         self.forest_dir = os.path.join(self.model_dir, "forests")
         self.data_prefix = "data_"
         self.tree_prefix = "tree_"
-        self.forest_name = "forest.h5"
+        self.forest_name = "test_forest.h5"
         self.comp_filt = tables.Filters(complib="zlib", complevel=1)
 
         self.trained = False
@@ -212,7 +212,7 @@ class StructuredForests(BaseStructuredForests):
 
                 for k, boundary in enumerate(bnds):
                     dis = distance_transform_edt(boundary == 0)
-
+                    
                     pos_loc = ((dis < g_rad) * mask).nonzero()
                     pos_loc = zip(pos_loc[0].tolist(), pos_loc[1].tolist())
                     pos_loc = [pos_loc[item] for item in
@@ -236,6 +236,8 @@ class StructuredForests(BaseStructuredForests):
                     lbl = N.zeros((ftr.shape[0], g_size, g_size), dtype=N.int8)
                     for m, (x, y) in enumerate(loc):
                         sub = segs[k][x - g_rad: x + g_rad, y - g_rad: y + g_rad]
+                        #from IPython import embed; embed()
+
                         sub = N.unique(sub, return_inverse=True)[1]
                         lbl[m] = sub.reshape((g_size, g_size))
 
@@ -350,6 +352,7 @@ class StructuredForests(BaseStructuredForests):
 
         # remove very small segments (<=5 pixels)
         n_seg = N.max(segs.reshape((n_tree, max_n_node, g_size ** 2)), axis=2) + 1
+
         for i in xrange(n_tree):
             for j in xrange(max_n_node):
                 m = n_seg[i, j]
@@ -371,7 +374,7 @@ class StructuredForests(BaseStructuredForests):
                     S = N.unique(S, return_inverse=True)[1]
                     segs[i, j] = S.reshape((g_size, g_size))
                     n_seg[i, j] = N.max(S) + 1
-
+ 
         # store compact representations of sparse binary edge patches
         n_bnd = self.options["sharpen"] + 1
         edge_pts = []
@@ -386,14 +389,15 @@ class StructuredForests(BaseStructuredForests):
 
                 for k in xrange(n_bnd):
                     r, c = N.nonzero(E & (~ E0))
-                    edge_pts += [r[m] * g_size + c[m] for m in xrange(len(r))]
+                    
+                    edge_pts.append(r*g_size+c)
                     edge_bnds[i, j, k] = len(r)
 
                     E0 = E
-                    E = conv_tri(E.astype(N.float64), 1) > 0.01
+                    E = conv_tri(E.astype(N.float32), 1) > 0.01
 
         segs = segs.reshape((-1, segs.shape[-2], segs.shape[-1]))
-        edge_pts = N.asarray(edge_pts, dtype=N.int32)
+        edge_pts = N.hstack(edge_pts).astype('i4')
         edge_bnds = N.hstack(([0], N.cumsum(edge_bnds.flatten()))).astype(N.int32)
 
         with tables.open_file(forest_path, "w", filters=self.comp_filt) as mfile:
@@ -417,16 +421,13 @@ def discretize(segs, n_class, n_sample, rand):
     :param rand: random number generator
     """
 
-    w = segs[0].shape[0]
-    segs = segs.reshape((segs.shape[0], w ** 2))
+    _,w,_ = segs.shape
+    segs = segs.reshape((-1, w**2))
 
     # compute all possible lookup inds for w x w patches
-    ids = N.arange(w ** 4, dtype=N.float64)
-    ids1 = N.floor(ids / w / w)
-    ids2 = ids - ids1 * w * w
-    kp = ids2 > ids1
-    ids1 = ids1[kp]
-    ids2 = ids2[kp]
+    idx = N.mgrid[:w**2, :w**2].reshape(2,-1)
+    _kp = idx[1]>idx[0]
+    ids1, ids2 = idx[:,_kp]
 
     # compute n binary codes zs of length nSamples
     n_sample = min(n_sample, ids1.shape[0])
@@ -439,22 +440,24 @@ def discretize(segs, n_class, n_sample, rand):
     for i in xrange(n):
         zs[i] = (segs[i][ids1] == segs[i][ids2])
     zs -= N.mean(zs, axis=0)
-    zs = zs[:, N.any(zs, axis=0)]
+    zs = zs[:, N.any(zs, axis=0)]       # compress columns, 
 
     if N.count_nonzero(zs) == 0:
-        lbls = N.ones(n, dtype=N.int32)
+        lbls = N.ones(n, dtype=N.int32) # all smaples are same template.
         segs = segs[0]
     else:
         # find most representative segs (closest to mean)
         ind = N.argmin(N.sum(zs * zs, axis=1))
         segs = segs[ind]
+        segs = segs.flatten()
+        segs = N.unique(segs, return_inverse=True)[1].astype('i4')
 
         # discretize zs by discretizing pca dimensions
         d = min(5, n_sample, int(floor(log(n_class, 2))))
         zs = robust_pca(zs, d, rand=rand)[0]
         lbls = N.zeros(n, dtype=N.int32)
         for i in xrange(d):
-            lbls += (zs[:, i] < 0).astype(N.int32) * 2 ** i
+            lbls += (zs[:, i] < 0).astype(N.int32) * (2 ** i)
         lbls = N.unique(lbls, return_inverse=True)[1].astype(N.int32)
 
     return lbls, segs.reshape((-1, w, w))
@@ -540,6 +543,16 @@ if __name__ == "__main__":
         "nms": True,
     }
 
+    #model = StructuredForests(options, rand=rand)
+    #model.train(bsds500_train("toy"))
+    #bsds500_test(model, "toy", "edges")
+
     model = StructuredForests(options, rand=rand)
-    model.train(bsds500_train("toy"))
-    bsds500_test(model, "toy", "edges")
+    if 0:   # using toy
+        model.train(bsds500_train("toy"))
+        bsds500_test(model, "toy", "edges")
+    
+    
+    if 1:   # using bsr
+        model.train(bsds500_train("h:/workspace/bsr"))
+        bsds500_test(model, "h:/workspace/bsr", "edges")

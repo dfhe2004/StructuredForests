@@ -90,21 +90,29 @@ class RandomForests(object):
         counts = np.zeros(max_n_node, dtype=np.int32)
         depths = np.zeros(max_n_node, dtype=np.int32)
         dwts = np.ones(n, dtype=np.float32) / n
-        dids = [None] * max_n_node
+        #dids = [None] * max_n_node
+        dids = []
 
-        dids[0] = np.arange(n)
+        #from IPython import embed; embed()
+
+
+        #dids[0] = np.arange(n)
+        dids.append(np.arange(n))
         cid, max_cid = 0, 1
         while cid < max_cid:
             # get node data and store distribution
-            sub_dids = dids[cid]
+            #sub_dids = dids[cid]
+            assert len(dids)>0
+            sub_dids = dids.pop(0)
             sub_ftrs = ftrs[sub_dids]
             sub_lbls = lbls[sub_dids]
             sub_dwts = dwts[sub_dids]
             sub_n = sub_ftrs.shape[0]
             counts[cid] = sub_n
-            dids[cid] = None
+            #dids[cid] = None
 
             if discretize is not None:
+                #from IPython import embed; embed()
                 sub_lbls, preds[cid] = discretize(sub_lbls, n_class)
                 sub_lbls = sub_lbls.astype(np.int32, copy=False)
 
@@ -138,9 +146,14 @@ class RandomForests(object):
                 fids[cid] = split_fid
                 cids[cid] = max_cid + 1
                 depths[max_cid: max_cid + 2] = depths[cid] + 1
-                dids[max_cid: max_cid + 2] = sub_dids[left], sub_dids[~left]
+                dids.append(sub_dids[left])
+                dids.append(sub_dids[~left])
+                #dids[max_cid: max_cid + 2] = sub_dids[left], sub_dids[~left]
                 max_cid += 2
             cid += 1
+        
+        assert len(dids)==0
+        #from IPython import embed; embed()
 
         ids = np.arange(max_cid)
         return thrs[ids], probs[ids], preds[ids], fids[ids], cids[ids], \

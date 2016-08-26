@@ -1,15 +1,15 @@
 __author__ = 'artanis'
 
+
 import numpy as np
 cimport numpy as np
 
 ctypedef np.int32_t INT32
 ctypedef np.float32_t FLOAT32
 
-
 cdef extern from "_random_forests.h":
-    void forestFindThr(int H, int N, int F, const FLOAT32 *data, const INT32 *hs,
-                       const float* ws, const INT32 *order, const int split,
+    void forestFindThr(int H, int N, int F, const FLOAT32 *data, const int *hs,
+                       const float* ws, const int *order, const int split,
                        int &fid, float &thr, double &gain) except +
 
 
@@ -30,7 +30,14 @@ def find_threshold(H, split, ftrs, lbls, dwts):
     cdef float thr = 0
     cdef double gain = 0
 
-    forestFindThr(H, N, F, &data[0, 0], &hs[0], &ws[0], &order[0, 0],
-                  split, fid, thr, gain)
+    forestFindThr(H, N, F, &data[0, 0], 
+       <const int*>(&hs[0]), 
+       &ws[0], 
+       <const int*>(&order[0, 0]),
+       split, fid, thr, gain
+   )
 
     return fid, thr, gain
+
+
+
