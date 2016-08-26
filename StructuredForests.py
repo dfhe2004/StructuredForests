@@ -113,7 +113,7 @@ class StructuredForests(BaseStructuredForests):
         n_cell = self.options["n_cell"]
         n_tree_eval = self.options["n_tree_eval"]
         nms = self.options["nms"] if "nms" in self.options else False
-        thrs = self.model["thrs"]
+        thrs = self.model["thrs"].astype('f4')
         fids = self.model["fids"]
         cids = self.model["cids"]
         edge_bnds = self.model["edge_bnds"]
@@ -130,18 +130,16 @@ class StructuredForests(BaseStructuredForests):
 
         if sharpen != 0:
             pad = conv_tri(pad, 1)
-
+        
         dst = predict_core(pad, reg_ch, ss_ch, shrink, p_size, g_size, n_cell,
                            stride, sharpen, n_tree_eval, thrs, fids, cids,
                            n_seg, segs, edge_bnds, edge_pts)
         
 
-        if sharpen == 0:
-            alpha = 2.1 * stride ** 2 / g_size ** 2 / n_tree_eval
-        elif sharpen == 1:
-            alpha = 1.8 * stride ** 2 / g_size ** 2 / n_tree_eval
-        else:
-            alpha = 1.65 * stride ** 2 / g_size ** 2 / n_tree_eval
+        if sharpen == 0:        alpha = 2.1 
+        elif sharpen == 1:      alpha = 1.8 
+        else:                   alpha = 1.65 
+        alpha = alpha * stride ** 2 / g_size ** 2 / n_tree_eval
 
         dst = N.minimum(dst * alpha, 1.0)
         dst = conv_tri(dst, 1)[g_rad: src.shape[0] + g_rad,
@@ -500,7 +498,7 @@ def bsds500_test(model, input_root, output_root):
     n_image = len(file_names)
 
     for i, file_name in enumerate(file_names):
-        img = img_as_float(imread(os.path.join(image_dir, file_name)))
+        img = img_as_float(imread(os.path.join(image_dir, file_name))).astype('f4')
 
         edge = img_as_ubyte(model.predict(img))
 

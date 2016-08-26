@@ -257,15 +257,8 @@ cdef inline float bilinear_interp(float[:, :] img, float x, float y) nogil:
 
     cdef int h = img.shape[0], w = img.shape[1]
 
-    if x < 0:
-        x = 0
-    elif x > w - 1.001:
-        x = w - 1.001
-
-    if y < 0:
-        y = 0
-    elif y > h - 1.001:
-        y = h - 1.001
+    x = min(max(x,0), w-1.001)
+    y = min(max(y,0), h-1.001)
 
     cdef int x0 = int(x), y0 = int(y), x1 = x0 + 1, y1 = y0 + 1
     cdef float dx0 = x - x0, dy0 = y - y0, dx1 = 1 - dx0, dy1 = 1 - dy0
@@ -305,13 +298,13 @@ def non_maximum_supr(float[:, :] E0, float[:, :] O, int r, int s, float m):
                 si = S[y, x]
 
                 for d from -r <= d <= r:
-                    if d != 0:
-                        e0 = bilinear_interp(E0, x + d * co, y + d * si)
-                        if e < e0:
-                            E[y, x] = 0
-                            break
+                    if d == 0:  continue     
+                    e0 = bilinear_interp(E0, x + d * co, y + d * si)
+                    if e >= e0: continue     
+                    E[y, x] = 0             # suppress
+                    break
 
-        # suppress noisy edge estimates near boundaries
+        # suppress noisy edge estimates near boundaries of image
         s = w / 2 if s > w / 2 else s
         s = h / 2 if s > h / 2 else s
 
