@@ -15,7 +15,7 @@ from utils import conv_tri, gradient
 import pyximport
 pyximport.install(build_dir=".pyxbld",
                   setup_args={"include_dirs": N.get_include()})
-from _StructuredForests import predict_core, non_maximum_supr
+from _StructuredForests import find_leaves, predict_no_sharpen, predict_sharpen, non_maximum_supr
 
 
 class StructuredForests(BaseStructuredForests):
@@ -127,14 +127,26 @@ class StructuredForests(BaseStructuredForests):
                                  borderType=cv2.BORDER_REFLECT)
 
         reg_ch, ss_ch = self.get_shrunk_channels(pad)
+        n_bnd = edge_bnds.shape[0]/cids.shape[0]/cids.shape[1]
 
         if sharpen != 0:
             pad = conv_tri(pad, 1)
-        
-        dst = predict_core(pad, reg_ch, ss_ch, shrink, p_size, g_size, n_cell,
-                           stride, sharpen, n_tree_eval, thrs, fids, cids,
-                           n_seg, segs, edge_bnds, edge_pts)
-        
+
+        lids = find_leaves(pad, reg_ch, ss_ch, shrink, p_size, g_size, n_cell,
+                       stride, n_tree_eval, thrs, fids, cids)
+
+        if sharpen!=0:
+            dst,ss = predict_sharpen(pad, lids, sharpen,
+                p_size, g_size, stride, n_tree_eval, n_bnd,
+                n_seg, segs, edge_bnds, edge_pts
+            )
+        else:
+            dst = predict_no_sharpen(pad, lids,  
+                p_size, g_size, stride, n_tree_eval, n_bnd,
+                edge_bnds, edge_pts
+            )
+
+        from IPython import embed; embed()
 
         if sharpen == 0:        alpha = 2.1 
         elif sharpen == 1:      alpha = 1.8 

@@ -105,20 +105,21 @@ def build_neigh_table(g_size):
 
 
 
-def compose(float[:, :, :] src, int[:, :, :] lids,
-            int p_size, int g_size, int stride, int sharpen, int n_tree_eval,
-            int[:, :] cids, int[:] n_seg, int[:, :, :] segs, int[:] edge_bnds,
-            int[:] edge_pts):
+def predict_sharpen(float[:, :, :] src, int[:, :, :] lids, int sharpen,
+            int p_size, int g_size, int stride,  int n_tree_eval, int n_bnd,
+            int[:] n_seg, int[:, :, :] segs, int[:] edge_bnds, int[:] edge_pts):
     cdef int height = src.shape[0] - p_size, width = src.shape[1] - p_size
     cdef int depth = src.shape[2], border = (p_size - g_size) / 2
-    cdef int n_bnd = edge_bnds.shape[0] / cids.shape[0] / cids.shape[1]
     cdef int n_s, max_n_s = N.max(n_seg)
     cdef int i, j, k, m, n, p, begin, end
     cdef int leaf_idx, x1, x2, y1, y2, best_seg
     cdef float err, min_err
     cdef N.ndarray[C_FLOAT32, ndim=2] dst_arr
+    cdef N.ndarray[C_INT32, ndim=5]   segs_arr
 
-    cdef int[:, :] patch = N.zeros((g_size, g_size), dtype=N.int32)
+    segs_arr = N.zeros((height, width, n_tree_eval, g_size, g_size), dtype=N.int32)
+    cdef int[:,:,:,:,:] _segs = segs_arr
+    cdef int[:,:] patch = N.zeros((g_size, g_size), dtype=N.int32)
     cdef float[:] count = N.zeros((max_n_s,), dtype=N.float32),
     cdef float[:, :] mean = N.zeros((max_n_s, depth), dtype=N.float32)
     cdef int[:, :, :, :] neigh_tb = build_neigh_table(g_size)
@@ -198,56 +199,43 @@ def compose(float[:, :, :] src, int[:, :, :] lids,
                             if patch[x1, y1] != patch[x2, y2]:
                                 dst[x1 + i, y1 + j] += 1.0
                                 break
+                    _segs[i,j,k,:,:] = patch
 
-    return dst_arr
+    return dst_arr, segs_arr
 
 
-def predict_core(N.ndarray[C_FLOAT32, ndim=3] src,
-                 N.ndarray[C_FLOAT32, ndim=3] reg_ch,
-                 N.ndarray[C_FLOAT32, ndim=3] ss_ch,
-                 int shrink, int p_size, int g_size, int n_cell,
-                 int stride, int sharpen, int n_tree_eval,
-                 N.ndarray[C_FLOAT32, ndim=2] thrs,
-                 N.ndarray[C_INT32, ndim=2] fids,
-                 N.ndarray[C_INT32, ndim=2] cids,
-                 N.ndarray[C_INT32, ndim=1] n_seg,
-                 N.ndarray[C_INT32, ndim=3] segs,
+
+def predict_no_sharpen(N.ndarray[C_FLOAT32, ndim=3] src,
+                 N.ndarray[C_INT32, ndim=3]   lids,
+                 int p_size, int g_size, int stride, int n_tree_eval, int n_bnd,
                  N.ndarray[C_INT32, ndim=1] edge_bnds,
                  N.ndarray[C_INT32, ndim=1] edge_pts):
-    cdef int n_tree = cids.shape[0], n_node_per_tree = cids.shape[1]
-    cdef int n_bnd = edge_bnds.shape[0] / n_tree / n_node_per_tree
     cdef int i, j, k, m, begin, end
     cdef int leaf_idx, loc, x1, y1
-    cdef N.ndarray[C_INT32, ndim=3] lids
     cdef N.ndarray[C_FLOAT32, ndim=2] dst
 
-    lids = find_leaves(src, reg_ch, ss_ch, shrink, p_size, g_size, n_cell,
-                       stride, n_tree_eval, thrs, fids, cids)
+    dst = N.zeros((src.shape[0], src.shape[1]), dtype=N.float32)
 
-    if sharpen == 0:
-        dst = N.zeros((src.shape[0], src.shape[1]), dtype=N.float32)
+    for i in xrange(0, src.shape[0] - p_size, stride):
+        for j in xrange(0, src.shape[1] - p_size, stride):
+            for k in xrange(n_tree_eval):
+                leaf_idx = lids[i, j, k]
 
-        for i in xrange(0, src.shape[0] - p_size, stride):
-            for j in xrange(0, src.shape[1] - p_size, stride):
-                for k in xrange(n_tree_eval):
-                    leaf_idx = lids[i, j, k]
+                begin = edge_bnds[leaf_idx * n_bnd]
+                end = edge_bnds[leaf_idx * n_bnd + 1]
+                if begin == end:
+                    continue
 
-                    begin = edge_bnds[leaf_idx * n_bnd]
-                    end = edge_bnds[leaf_idx * n_bnd + 1]
-                    if begin == end:
-                        continue
-
-                    for m in xrange(begin, end):
-                        loc = edge_pts[m]
-                        x1 = loc / g_size + i
-                        y1 = loc % g_size + j
-
-                        dst[x1, y1] += 1.0
-    else:
-        dst = compose(src, lids, p_size, g_size, stride, sharpen, n_tree_eval,
-                      cids, n_seg, segs, edge_bnds, edge_pts)
-
+                for m in xrange(begin, end):
+                    loc = edge_pts[m]
+                    x1 = loc / g_size + i
+                    y1 = loc % g_size + j
+                    dst[x1, y1] += 1.0
     return dst
+
+
+
+
 
 
 cdef inline float bilinear_interp(float[:, :] img, float x, float y) nogil:
